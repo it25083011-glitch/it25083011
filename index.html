@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天気予報</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sky-day: #0a1628;
+    --sky-mid: #0d2b55;
+    --sky-light: #1a4a8a;
+    --accent: #7eb8f7;
+    --accent-warm: #f5c842;
+    --text-primary: #e8f4fd;
+    --text-secondary: #8ab4d4;
+    --glass: rgba(255,255,255,0.06);
+    --glass-border: rgba(255,255,255,0.12);
+    --glass-hover: rgba(255,255,255,0.1);
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--sky-day);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  /* Animated sky background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% -10%, #1a4a8a 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 110%, #0d2240 0%, transparent 60%);
+    z-index: 0;
+    animation: skyShift 20s ease-in-out infinite alternate;
+  }
+
+  @keyframes skyShift {
+    0% { opacity: 1; }
+    100% { opacity: 0.7; }
+  }
+
+  /* Stars */
+  .stars {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .star {
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+    animation: twinkle var(--dur, 3s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.1; }
+    50% { opacity: 0.7; }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+    min-height: 100vh;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+    animation: fadeDown 0.6s ease both;
+  }
+
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(2rem, 6vw, 3rem);
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+  }
+
+  header p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 300;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Search */
+  .search-wrap {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 2.5rem;
+    animation: fadeDown 0.6s 0.1s ease both;
+  }
+
+  .search-wrap input {
+    flex: 1;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 0.85rem 1.4rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .search-wrap input::placeholder { color: var(--text-secondary); }
+  .search-wrap input:focus {
+    border-color: var(--accent);
+    background: rgba(255,255,255,0.09);
+  }
+
+  .search-wrap button {
+    background: var(--accent);
+    color: #0a1628;
+    border: none;
+    border-radius: 50px;
+    padding: 0.85rem 1.6rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+    white-space: nowrap;
+  }
+  .search-wrap button:hover { background: #a8d0ff; transform: scale(1.03); }
+  .search-wrap button:active { transform: scale(0.98); }
+
+  /* Glass card base */
+  .card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 1.5rem;
+    backdrop-filter: blur(12px);
+  }
+
+  /* Error */
+  #error-msg {
+    display: none;
+    text-align: center;
+    padding: 1rem 1.5rem;
+    background: rgba(220,60,60,0.15);
+    border: 1px solid rgba(220,60,60,0.3);
+    border-radius: 12px;
+    color: #f87c7c;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    animation: fadeIn 0.3s ease both;
+  }
+
+  /* Loading */
+  #loading {
+    display: none;
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid var(--glass-border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Current weather */
+  #weather-result { display: none; }
+
+  .current-card {
+    margin-bottom: 1rem;
+    animation: fadeIn 0.5s ease both;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .current-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+  }
+
+  .current-location {
+    font-size: 1.3rem;
+    font-weight: 500;
+    margin-bottom: 0.2rem;
+  }
+
+  .current-date {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+  }
+
+  .current-temp-wrap { text-align: right; }
+
+  .current-temp {
+    font-family: 'DM Serif Display', serif;
+    font-size: 5rem;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+
+  .current-desc {
+    font-size: 0.85rem;
+    color: var(--accent);
+    text-align: right;
+    margin-top: 4px;
+  }
+
+  .weather-icon-large {
+    font-size: 4rem;
+    display: block;
+    text-align: right;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .current-temp { font-size: 3.5rem; }
+  }
+
+  .stat-item {
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 0.75rem;
+    text-align: center;
+    border: 1px solid var(--glass-border);
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem;
+  }
+
+  .stat-value {
+    font-size: 1.1rem;
+    font-weight: 500;
+  }
+
+  /* Forecast */
+  .section-title {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+  }
+
+  .forecast-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    animation: fadeIn 0.5s 0.2s ease both;
+  }
+
+  @media (max-width: 480px) {
+    .forecast-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  .forecast-day {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 1rem 0.5rem;
+    text-align: center;
+    transition: background 0.2s;
+  }
+
+  .forecast-day:hover { background: var(--glass-hover); }
+
+  .fc-day-name {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .fc-icon {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .fc-hi {
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .fc-lo {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  /* Hourly */
+  .hourly-wrap {
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-bottom: 1rem;
+  }
+  .hourly-wrap::-webkit-scrollbar { display: none; }
+
+  .hourly-row {
+    display: flex;
+    gap: 8px;
+    padding-bottom: 4px;
+    animation: fadeIn 0.5s 0.15s ease both;
+  }
+
+  .hourly-item {
+    flex-shrink: 0;
+    width: 70px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 0.7rem 0.4rem;
+    text-align: center;
+    transition: background 0.2s;
+  }
+  .hourly-item:hover { background: var(--glass-hover); }
+
+  .h-time {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .h-icon { font-size: 1.3rem; margin-bottom: 6px; display: block; }
+  .h-temp { font-size: 0.9rem; font-weight: 500; }
+
+  /* Welcome state */
+  #welcome {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+    animation: fadeIn 0.6s 0.3s ease both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  #welcome .big-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.4; }
+  #welcome p { font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<div class="stars" id="stars"></div>
+
+<div class="container">
+  <header>
+    <h1>天気予報</h1>
+    <p>Weather Forecast</p>
+  </header>
+
+  <div class="search-wrap">
+    <input type="text" id="cityInput" placeholder="都市名を入力 (例: Tokyo, Osaka, New York)" />
+    <button onclick="fetchWeather()">検索</button>
+  </div>
+
+  <div id="error-msg"></div>
+  <div id="loading"><div class="spinner"></div><p>読み込み中...</p></div>
+
+  <div id="welcome">
+    <div class="big-icon">🌤</div>
+    <p>都市名を入力して天気を確認しましょう</p>
+  </div>
+
+  <div id="weather-result">
+    <!-- Current -->
+    <div class="card current-card" style="margin-bottom:1rem;">
+      <div class="current-top">
+        <div>
+          <div class="current-location" id="cur-city">—</div>
+          <div class="current-date" id="cur-date">—</div>
+          <div style="margin-top:0.5rem; font-size:0.9rem; color:var(--text-secondary);" id="cur-feels">体感 —</div>
+        </div>
+        <div class="current-temp-wrap">
+          <span class="weather-icon-large" id="cur-icon">🌤</span>
+          <div class="current-temp" id="cur-temp">—</div>
+          <div class="current-desc" id="cur-desc">—</div>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">湿度</div>
+          <div class="stat-value" id="st-humidity">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">風速</div>
+          <div class="stat-value" id="st-wind">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">気圧</div>
+          <div class="stat-value" id="st-pressure">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">視程</div>
+          <div class="stat-value" id="st-vis">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hourly -->
+    <p class="section-title">時間別予報</p>
+    <div class="hourly-wrap">
+      <div class="hourly-row" id="hourly-row"></div>
+    </div>
+
+    <!-- 5-day -->
+    <p class="section-title" style="margin-top:1.25rem;">5日間予報</p>
+    <div class="forecast-grid" id="forecast-grid"></div>
+  </div>
+</div>
+
+<script>
+const API_KEY = '4b47e3a2b49d02b16ea8a4f0e6d0b3b1';
+
+// Generate stars
+const starsEl = document.getElementById('stars');
+for(let i=0;i<80;i++){
+  const s=document.createElement('div');
+  s.className='star';
+  const size=Math.random()*2+1;
+  s.style.cssText=`width:${size}px;height:${size}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--dur:${2+Math.random()*4}s;--delay:${Math.random()*5}s`;
+  starsEl.appendChild(s);
+}
+
+const weatherIcons = {
+  Clear:['☀️','🌙'],
+  Clouds:['⛅','☁️'],
+  Rain:['🌧','🌧'],
+  Drizzle:['🌦','🌦'],
+  Thunderstorm:['⛈','⛈'],
+  Snow:['❄️','❄️'],
+  Mist:['🌫','🌫'],
+  Fog:['🌫','🌫'],
+  Haze:['🌫','🌫'],
+  Smoke:['🌫','🌫'],
+  Tornado:['🌪','🌪'],
+  Squall:['💨','💨'],
+};
+
+function getIcon(main, hour){
+  const isDay = hour===undefined || (hour>=6 && hour<18);
+  const arr = weatherIcons[main]||['🌡','🌡'];
+  return isDay ? arr[0] : arr[1];
+}
+
+const jpDesc = {
+  'clear sky':'快晴','few clouds':'薄曇り','scattered clouds':'雲りがち',
+  'broken clouds':'曇り','overcast clouds':'全天曇り',
+  'light rain':'小雨','moderate rain':'雨','heavy intensity rain':'大雨',
+  'very heavy rain':'激しい雨','light snow':'小雪','snow':'雪',
+  'thunderstorm':'雷雨','mist':'霧','fog':'濃霧','haze':'もや',
+  'drizzle':'霧雨','shower rain':'にわか雨','light intensity shower rain':'にわか雨',
+};
+const days = ['日','月','火','水','木','金','土'];
+
+function getDesc(d){ return jpDesc[d.toLowerCase()]||d; }
+
+async function fetchWeather(){
+  const city = document.getElementById('cityInput').value.trim();
+  if(!city) return;
+  show('loading');
+  try {
+    const [cur, fc] = await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&lang=ja`).then(r=>r.json()),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&lang=ja`).then(r=>r.json()),
+    ]);
+    if(cur.cod!==200) throw new Error(cur.message||'都市が見つかりません');
+
+    const now = new Date();
+    document.getElementById('cur-city').textContent = cur.name + (cur.sys?.country?`, ${cur.sys.country}`:'');
+    document.getElementById('cur-date').textContent = now.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+    document.getElementById('cur-temp').textContent = Math.round(cur.main.temp)+'°';
+    document.getElementById('cur-feels').textContent = `体感 ${Math.round(cur.main.feels_like)}°C`;
+    document.getElementById('cur-desc').textContent = getDesc(cur.weather[0].description);
+    document.getElementById('cur-icon').textContent = getIcon(cur.weather[0].main, now.getHours());
+    document.getElementById('st-humidity').textContent = cur.main.humidity+'%';
+    document.getElementById('st-wind').textContent = Math.round(cur.wind.speed*3.6)+' km/h';
+    document.getElementById('st-pressure').textContent = cur.main.pressure+' hPa';
+    document.getElementById('st-vis').textContent = cur.visibility ? Math.round(cur.visibility/1000)+'km':'—';
+
+    // Hourly (next 24h)
+    const hourlyEl = document.getElementById('hourly-row');
+    hourlyEl.innerHTML='';
+    fc.list.slice(0,8).forEach(item=>{
+      const d=new Date(item.dt*1000);
+      const h=d.getHours();
+      const timeStr=`${String(h).padStart(2,'0')}:00`;
+      hourlyEl.innerHTML+=`<div class="hourly-item">
+        <div class="h-time">${timeStr}</div>
+        <span class="h-icon">${getIcon(item.weather[0].main,h)}</span>
+        <div class="h-temp">${Math.round(item.main.temp)}°</div>
+      </div>`;
+    });
+
+    // 5-day daily
+    const daily={};
+    fc.list.forEach(item=>{
+      const d=new Date(item.dt*1000);
+      const key=d.toDateString();
+      if(!daily[key]) daily[key]={date:d,temps:[],mains:[]};
+      daily[key].temps.push(item.main.temp);
+      daily[key].mains.push(item.weather[0].main);
+    });
+
+    const fcEl=document.getElementById('forecast-grid');
+    fcEl.innerHTML='';
+    Object.values(daily).slice(0,5).forEach(d=>{
+      const hi=Math.round(Math.max(...d.temps)), lo=Math.round(Math.min(...d.temps));
+      const main=d.mains[Math.round(d.mains.length/2)];
+      const isToday=d.date.toDateString()===now.toDateString();
+      fcEl.innerHTML+=`<div class="forecast-day">
+        <div class="fc-day-name">${isToday?'今日':days[d.date.getDay()]}</div>
+        <span class="fc-icon">${getIcon(main,12)}</span>
+        <div class="fc-hi">${hi}°</div>
+        <div class="fc-lo">${lo}°</div>
+      </div>`;
+    });
+
+    show('result');
+  } catch(e) {
+    document.getElementById('error-msg').textContent='⚠ '+e.message;
+    show('error');
+  }
+}
+
+function show(state){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('error-msg').style.display='none';
+  document.getElementById('weather-result').style.display='none';
+  document.getElementById('welcome').style.display='none';
+  if(state==='loading') document.getElementById('loading').style.display='block';
+  else if(state==='error'){ document.getElementById('error-msg').style.display='block'; document.getElementById('welcome').style.display='none'; }
+  else if(state==='result') document.getElementById('weather-result').style.display='block';
+}
+
+document.getElementById('cityInput').addEventListener('keydown',e=>{ if(e.key==='Enter') fetchWeather(); });
+</script>
+</body>
+</html>
